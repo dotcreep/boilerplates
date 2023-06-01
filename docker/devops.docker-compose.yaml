@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    command: tunnel --no-autoupdate run --token eyJhIjoiODBjNjYxMzhiYTViMzkwNzJjODMyZmU3NzNiZmMxNTYiLCJ0IjoiNjg1OTNmNWQtY2YyMi00MjE2LTg4OWItNzZiM2UxYzg5MzJjIiwicyI6Ik1tTXdZV1k0TTJVdE1qZzJaQzAwTWpGaUxXSmxaVFl0TUdJell6Vm1OekE1T0RCbCJ9
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.2
+
+  nginx:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx
+    restart: always
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/data:/data
+      - ./nginx/letsencrypt:/etc/letsencrypt
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.3
+
+  portainer:
+    image: portainer/portainer-ce:alpine
+    container_name: portainer
+    restart: always
+    volumes:
+      - portainer:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.4
+
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    restart: always
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: <change-me>
+    networks:
+      delogic:
+        ipv4_address: 10.0.0.6
+
+  adminer:
+    image: adminer
+    container_name: adminer
+    restart: always
+    networks:
+      delogic:
+        ipv4_address: 10.0.0.7
+
+  jenkins:
+    image: jenkins/jenkins:lts-jdk11
+    container_name: jenkins
+    restart: always
+    volumes:
+      - jenkins:/var/jenkins_home
+    networks:
+      delogic:
+        ipv4_address: 10.0.0.8
+        
+  registry:
+    image: registry:2
+    container_name: registry
+    restart: always
+    volumes:
+      - registry:/var/lib/registry
+    networks:
+      delogic:
+        ipv4_address: 10.0.0.9
+  
+  registry-ui:
+    image: konradkleine/docker-registry-frontend:v2
+    container_name: registry-ui
+    restart: always
+    volumes:
+      - ./regui:/etc/apache2/server.crt
+      - ./regui:/etc/apache2/server.key
+    environment:
+      ENV_DOCKER_REGISTRY_HOST: registry
+      ENV_DOCKER_REGISTRY_PORT: 5000
+    networks:
+      delogic:
+        ipv4_address: 10.0.0.10
+
+volumes:
+  portainer:
+    name: portainer
+  postgres:
+    name: postgres
+  jenkins:
+    name: jenkins
+  registry:
+    name: registry
+
+networks:
+  dotnetwork:
+    name: dotnetwork
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    command: tunnel --no-autoupdate run --token eyJhIjoiODBjNjYxMzhiYTViMzkwNzJjODMyZmU3NzNiZmMxNTYiLCJ0IjoiNjg1OTNmNWQtY2YyMi00MjE2LTg4OWItNzZiM2UxYzg5MzJjIiwicyI6Ik1tTXdZV1k0TTJVdE1qZzJaQzAwTWpGaUxXSmxaVFl0TUdJell6Vm1OekE1T0RCbCJ9
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.2
+
+  nginx:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx
+    restart: always
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/data:/data
+      - ./nginx/letsencrypt:/etc/letsencrypt
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.3
+
+  portainer:
+    image: portainer/portainer-ce:alpine
+    container_name: portainer
+    restart: always
+    volumes:
+      - portainer:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.4
+
+  nextcloud:
+    image: nextcloud:stable-apache
+    container_name: nextcloud
+    restart: always
+    volumes:
+      - nextcloud:/var/www/html
+    depends_on:
+      - postgres
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.5
+
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    restart: always
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: ${POSTGRES_ROOTDB_PASSWORD}
+    env_file:
+      - .env
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.6
+
+  adminer:
+    image: adminer
+    container_name: adminer
+    restart: always
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.7
+
+  teledrive:
+    container_name: teledrive
+    command: bash -c "export NODE_OPTIONS='--openssl-legacy-provider --no-experimental-fetch' && yarn api prisma migrate deploy || yarn api prisma migrate resolve --applied "20220420012853_init" && node api/dist/index.js"
+    labels:
+      traefik.http.routers.server.rule: Host(`teledrive.localhost`)
+      traefik.port: 4000
+    # ports:
+    #   - "${PORT:-4000}:${PORT:-4000}"
+    expose:
+      - ${PORT:-4000}
+    build:
+      context: ../.
+      dockerfile: Dockerfile
+      args:
+        REACT_APP_TG_API_ID: ${TG_API_ID}
+        REACT_APP_TG_API_HASH: ${TG_API_HASH}
+    environment:
+      DATABASE_URL: postgres://teledrive:${DB_PASSWORD}@postgres:5432/teledrive?connect_timeout=60&pool_timeout=60&socket_time>
+      REDIS_URI: redis://redis:6379
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.8
+
+  redis:
+    image: redis:6
+    container_name: redis
+    restart: always
+    networks:
+      dotnetwork:
+        ipv4_address: 10.0.0.9
+
+volumes:
+  teledrive_data:
+    name: teledrive
+  portainer:
+    name: portainer
+  postgres:
+    name: postgres
+  nextcloud:
+    name: nextcloud
+
+networks:
+  dotnetwork:
+    name: dotnetwork
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1
